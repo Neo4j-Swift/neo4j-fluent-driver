@@ -1,5 +1,6 @@
 import XCTest
 import Fluent
+import PackStream
 import Bolt
 
 @testable import neo4j_fluent_driver
@@ -19,6 +20,8 @@ class neo4j_fluent_driverTests: XCTestCase {
         Atom.database = db
     }
     
+    
+
     func testFilterQuery() throws {
         let query = Query<User>(db)
         try query.filter("name", "bob")
@@ -29,10 +32,14 @@ class neo4j_fluent_driverTests: XCTestCase {
     func testCreateQuery() throws {
         let atom = Atom(name: "Miniton")
         try atom.save()
+        XCTAssertNotNil(atom.id)
     }
     
     func testUpdateQuery() throws {
-    
+        let atom = Atom(name: "Miniton")
+        try atom.save()
+        atom.name = "Miniton the great"
+        try atom.save()
     }
     
     func testDeleteQuery() throws {

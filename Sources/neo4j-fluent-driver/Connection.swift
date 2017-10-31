@@ -50,6 +50,7 @@ public final class Connection: Fluent.Connection {
         
         print("Start query")
         var node: Fluent.Node! = nil
+        var theId: UInt64? = nil
         switch query {
         case let .raw(cypher, nodes):
             // todo: convert cypher + node into Bolt.Request
@@ -85,27 +86,35 @@ public final class Connection: Fluent.Connection {
                                 } else {
                                     // Success!
                                     if let resultNode = queryResult.nodes.first?.value {
-                                        //TODO: Get better way of mapping back to [String:StructuredData]
-                                        // don't forget "id"
-                                        node = Fluent.Node(StructuredData.object(resultNode.properties as! [String:StructuredData]), in: nil)
-//                                        node = Fluent.Node(booleanLiteral: true)
+                                        var properties = Dictionary(uniqueKeysWithValues:
+                                            resultNode.properties.map { key, value in (key, value.toStructuredData()) })
+                                        if let id = resultNode.id {
+                                            theId = resultNode.id
+                                            let idInt = Int(id)
+                                            properties["id"] = StructuredData.number(StructuredData.Number.int(idInt))
+                                        }
+                                        node = Fluent.Node(StructuredData.object(properties), in: nil)
 
                                     } else {
-                                        print("Query did not contain result")
-                                        node = Fluent.Node(booleanLiteral: false)
+                                        node = Fluent.Node.null
                                     }
                                 }
                             }
                             group.leave()
                         }
                     }
-                    //TODO: Turn this into a Node
                 }
             }
             group.wait()
         }
         
-        print("Now execute cypher synchronously and prepare vapor node for return")
+        if let action = query.wrapped?.action,
+            let theId = theId {
+            if case .create = action {
+                return Node(StructuredData.number(StructuredData.Number.int(Int(theId))))
+            }
+        }
+        
         return node
     }
 }
