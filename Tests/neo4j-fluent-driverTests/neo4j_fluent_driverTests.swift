@@ -22,7 +22,7 @@ class neo4j_fluent_driverTests: XCTestCase {
     }
     
     private func makeClient() throws -> BoltClient {
-        var theo = try Theo.BoltClient(
+        let theo = try Theo.BoltClient(
             hostname: "192.168.0.106",
             port: 7687,
             username: "neo4j",
@@ -60,15 +60,35 @@ class neo4j_fluent_driverTests: XCTestCase {
             }
         }
     }
-    
-    func testFilterQuery() throws {
+
+    func testFilterQueryWithOneParameter() throws {
+
+        let query = Query<User>(db)
+        try query.filter("name", "bob")
+
+        let matchingNode = Theo.Node(labels: ["User"], properties: [ "name": "bob" ])
+
+        try doTestFilterWith(query: query, forMatchingNode: matchingNode)
+        
+    }
+
+    func testFilterQueryWithTwoParameters() throws {
+        
+        let query = Query<User>(db)
+        try query.filter("name", "anne")
+        try query.filter("age", 35)
+        
+        let matchingNode = Theo.Node(labels: ["User"], properties: [ "name": "anne", "age": 35 ])
+        
+        try doTestFilterWith(query: query, forMatchingNode: matchingNode)
+        
+    }
+
+    func doTestFilterWith<E: Entity>(query: Query<E>, forMatchingNode matchingNode: Theo.Node) throws {
         
         let exp = expectation(description: "Filter returned a node")
         let theo = try makeClient()
 
-        let query = Query<User>(db)
-        try query.filter("name", "bob")
-        
         let request = serialize(query)
         
         let group = DispatchGroup()
@@ -86,8 +106,6 @@ class neo4j_fluent_driverTests: XCTestCase {
         }
         group.wait()
 
-        
-        let matchingNode = Theo.Node(labels: ["User"], properties: [ "name": "bob" ])
         let createResponse = theo.createNodeSync(node: matchingNode)
         XCTAssertNil(createResponse.error)
         XCTAssertTrue(createResponse.value!)
@@ -129,7 +147,11 @@ class neo4j_fluent_driverTests: XCTestCase {
 
 
     static var allTests = [
-        ("testFilterQuery", testFilterQuery),
+        ("testFilterQueryWithOneParameter", testFilterQueryWithOneParameter),
+        ("testFilterQueryWithTwoParameters", testFilterQueryWithTwoParameters),
+        ("testCreateQuery", testCreateQuery),
+        ("testUpdateQuery", testUpdateQuery),
+        ("testDeleteQuery", testDeleteQuery),
     ]
 }
 
