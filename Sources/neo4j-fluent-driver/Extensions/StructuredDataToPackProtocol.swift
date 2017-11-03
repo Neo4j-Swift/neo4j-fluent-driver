@@ -5,7 +5,7 @@ import Bolt
 import Theo
 
 extension PackProtocol {
-    
+
     public func toStructuredData() -> StructuredData {
         if let uint = self.uintValue() {
             let value = UInt(uint)
@@ -37,7 +37,7 @@ extension PackProtocol {
 }
 
 extension StructuredData {
-    
+
     public func toPackProtocol() -> PackProtocol {
         switch self {
         case .null:

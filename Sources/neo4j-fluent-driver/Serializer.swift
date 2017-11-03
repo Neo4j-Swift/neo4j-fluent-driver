@@ -9,13 +9,13 @@ class SerializerHelper {
 }
 
 public final class Serializer<E:Entity> {
-    
+
     private let query: Query<E>
-    
+
     init(query: Query<E>) {
         self.query = query
     }
-    
+
     public func serialize() -> Bolt.Request {
         switch query.action {
         case let .fetch(fields):
@@ -32,69 +32,77 @@ public final class Serializer<E:Entity> {
             return serializeSchema(schema: schema)
         }
     }
-    
+
     private func makeFilter() -> Request {
-        var parameters = [String:PackProtocol]()
-        
+
         let rawFilters = query.filters.filter { if case .raw = $0 { return true } else { return false } }
-        let filters = query.filters.filter { if case .raw = $0 { return false } else { return true } }.map { filterToString(filter: $0) }
-        
-        var queryString = "MATCH (n)\nWHERE \n"
-        queryString += "RETURN n"
+
+        let filtersWithParams = query.filters.filter { if case .raw = $0 { return false } else { return true } }.map { filterToString(filter: $0) }
+        let filters = filtersWithParams.map { $0.0 }.joined(separator: "\nAND ")
+        let paramTuples = filtersWithParams.flatMap { $0.1 }
+        let parameters = Dictionary(uniqueKeysWithValues: paramTuples.map { $0 })
+
+        let nodeAlias = "`\(query.filters.first!.wrapped!.entity.name)`"
+        let queryString = "MATCH (\(nodeAlias))\nWHERE \(filters)\nRETURN (\(nodeAlias))"
+        print(queryString)
         return Request.run(statement: queryString, parameters: Map(dictionary: parameters))
+
     }
-    
-    private func filterToString(filter: RawOr<Filter>) -> String {
-        var filterString = ""
-        var property = (String,PackProtocol)
+
+    private func filterToString(filter: RawOr<Filter>) -> (String, (String,PackProtocol)?) {
+        var property: (String,PackProtocol)? = nil
         SerializerHelper.filterCounter = SerializerHelper.filterCounter + 1
 
         switch filter {
         case let .raw(string, nodes):
-            return "" // TODO: What does this make?
+            print(string)
+            return ("", nil) // TODO: What does this make?
         case let .some(theFilter):
             let nodeAlias = "`\(theFilter.entity.name)`"
             switch theFilter.method {
             case let .compare(propName, comparison, node):
                 let name = "\(propName)\(SerializerHelper.filterCounter)"
-                properties[name] = node.wrapped.toPackProtocol()
+                property = (name, node.wrapped.toPackProtocol())
 
                 switch comparison {
                 case .equals:
                     let f = "\(nodeAlias).`\(propName)` = {\(name)}"
-                    filters.append(f)
+                    return (f, property)
                 case .greaterThan:
                     let f = "\(nodeAlias).`\(propName)` > {\(name)}"
-                    filters.append(f)
+                    return (f, property)
                 case .lessThan:
                     let f = "\(nodeAlias).`\(propName)` < {\(name)}"
-                    filters.append(f)
+                    return (f, property)
                 case .greaterThanOrEquals:
                     let f = "\(nodeAlias).`\(propName)` >= {\(name)}"
-                    filters.append(f)
+                    return (f, property)
                 case .lessThanOrEquals:
                     let f = "\(nodeAlias).`\(propName)` <= {\(name)}"
-                    filters.append(f)
+                    return (f, property)
                 case .notEquals:
                     let f = "\(nodeAlias).`\(propName)` != {\(name)}"
-                    filters.append(f)
+                    return (f, property)
                 case .hasSuffix:
                     print(propName)
+                    return ("", nil)
                 case .hasPrefix:
                     print(propName)
+                    return ("", nil)
                 case .contains:
                     print(propName)
+                    return ("", nil)
                 case let .custom(string):
                     print(propName)
+                    return ("", nil)
                 }
             case let .subset(propName, scope, nodes):
                 print(propName)
+                return ("", nil)
             case let .group(relation, rawOrFilter):
                 print(relation)
+                return ("", nil)
             }
-            
-            print(theFilter)
-            return ""
         }
     }
 
@@ -103,21 +111,21 @@ public final class Serializer<E:Entity> {
         let queryFilter = makeFilter()
         return queryFilter
     }
-    
+
     private func serializeAggregate(field: String?, aggregate: Aggregate) -> Bolt.Request {
-        
+
         return Request.ackFailure()
     }
-    
+
     private func serializeDelete() -> Bolt.Request {
-        
+
         let node = queryToNode()
         let request = node.deleteRequest()
         return request
     }
-    
-    
-    
+
+
+
     private func serializeCreate() -> Request {
         let node = queryToNode()
         let request = node.createRequest()
@@ -130,7 +138,7 @@ public final class Serializer<E:Entity> {
             let label = type(of: entity).name.capitalizingFirstLetter()
             labels.append(label)
         }
-        
+
         var id: UInt64? = {
             let uint = query.entity?.id?.wrapped.uint
             if let uint = uint {
@@ -139,13 +147,13 @@ public final class Serializer<E:Entity> {
                 return nil
             }
         }()
-        
+
         var properties = [String:PackProtocol]()
         for (key, value) in /* query.entity?.storage.fetchedRow ?? */ query.data {
             if let key = key.wrapped,
                 let structuredValue = value.wrapped?.wrapped {
                 let value = structuredValue.toPackProtocol()
-                
+
                 if id == nil,
                    key == "id" {
                     id = value.uintValue()
@@ -157,25 +165,24 @@ public final class Serializer<E:Entity> {
             }
         }
 
-        
+
         let node = Theo.Node(labels: labels, properties: properties)
         if let id = id {
             node.id = id
         }
         return node
     }
-    
-    private func serializeModify() -> Bolt.Request {
-        
-        
-        
-        return Request.ackFailure()
-    }
-    
-    private func serializeSchema(schema: Schema) -> Bolt.Request {
-        
-        return Request.ackFailure()
-    }
-    
-}
 
+    private func serializeModify() -> Bolt.Request {
+
+
+
+        return Request.ackFailure()
+    }
+
+    private func serializeSchema(schema: Schema) -> Bolt.Request {
+
+        return Request.ackFailure()
+    }
+
+}

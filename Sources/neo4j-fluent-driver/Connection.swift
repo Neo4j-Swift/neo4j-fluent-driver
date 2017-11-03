@@ -12,7 +12,7 @@ public final class Connection: Fluent.Connection {
 
     init?(queryLogger: QueryLogger?) {
         self.queryLogger = queryLogger
-        
+
         do {
             print("Creating client")
             client = try BoltClient(hostname: "192.168.0.106", port: 7687, username: "neo4j", password: "<passcode>", encrypted: true)
@@ -29,7 +29,7 @@ public final class Connection: Fluent.Connection {
             group.leave()
         }
         group.wait()
-        
+
         print("Connect to client")
         client.connect() { result in
             switch result {
@@ -44,10 +44,10 @@ public final class Connection: Fluent.Connection {
             }
         }
     }
-    
+
     // Actually performs a query
     public func query<E>(_ query: RawOr<Query<E>>) throws -> Fluent.Node where E : Entity {
-        
+
         print("Start query")
         var node: Fluent.Node! = nil
         var theId: UInt64? = nil
@@ -59,7 +59,7 @@ public final class Connection: Fluent.Connection {
         case let .some(query):
             let serializer = Serializer(query: query)
             let request = serializer.serialize()
-            
+
             let group = DispatchGroup()
             group.enter()
             client.execute(request: request) { response in
@@ -107,15 +107,14 @@ public final class Connection: Fluent.Connection {
             }
             group.wait()
         }
-        
+
         if let action = query.wrapped?.action,
             let theId = theId {
             if case .create = action {
                 return Node(StructuredData.number(StructuredData.Number.int(Int(theId))))
             }
         }
-        
+
         return node
     }
 }
-

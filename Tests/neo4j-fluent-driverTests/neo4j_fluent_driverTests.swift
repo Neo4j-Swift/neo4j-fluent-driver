@@ -2,6 +2,7 @@ import XCTest
 import Fluent
 import PackStream
 import Bolt
+import Theo
 
 @testable import neo4j_fluent_driver
 
@@ -20,13 +21,91 @@ class neo4j_fluent_driverTests: XCTestCase {
         Atom.database = db
     }
     
-    
+    private func makeClient() throws -> BoltClient {
+        var theo = try Theo.BoltClient(
+            hostname: "192.168.0.106",
+            port: 7687,
+            username: "neo4j",
+            password: "<passcode>",
+            encrypted: true)
 
+        let group = DispatchGroup()
+        group.enter()
+        performConnect(client: theo) { isSuccess in
+            XCTAssertTrue(isSuccess)
+            group.leave()
+        }
+        group.wait()
+
+        return theo
+    }
+
+    private func performConnect(client: BoltClient, completionBlock: ((Bool) -> ())? = nil) {
+        client.connect() { connectionResult in
+            switch connectionResult {
+            case let .failure(error):
+                if error.errorCode == -9806 {
+                    self.performConnect(client: client) { result in
+                        completionBlock?(result)
+                    }
+                } else {
+                    XCTFail()
+                    completionBlock?(false)
+                }
+            case let .success(isConnected):
+                if !isConnected {
+                    print("Error, could not connect!")
+                }
+                completionBlock?(isConnected)
+            }
+        }
+    }
+    
     func testFilterQuery() throws {
+        
+        let exp = expectation(description: "Filter returned a node")
+        let theo = try makeClient()
+
         let query = Query<User>(db)
         try query.filter("name", "bob")
         
         let request = serialize(query)
+        
+        let group = DispatchGroup()
+        group.enter()
+        var foundNodes = 0
+        theo.executeWithResult(request: request) { result in
+            switch result {
+            case let .failure(error):
+                XCTFail(error.localizedDescription)
+            case let .success((isSuccess, queryResult)):
+                XCTAssertTrue(isSuccess)
+                foundNodes = queryResult.nodes.count
+                group.leave()
+            }
+        }
+        group.wait()
+
+        
+        let matchingNode = Theo.Node(labels: ["User"], properties: [ "name": "bob" ])
+        let createResponse = theo.createNodeSync(node: matchingNode)
+        XCTAssertNil(createResponse.error)
+        XCTAssertTrue(createResponse.value!)
+
+        theo.executeWithResult(request: request) { result in
+            switch result {
+            case let .failure(error):
+                XCTFail(error.localizedDescription)
+            case let .success((isSuccess, queryResult)):
+                XCTAssertTrue(isSuccess)
+                XCTAssertEqual(foundNodes + 1, queryResult.nodes.count)
+                exp.fulfill()
+            }
+        }
+        
+        waitForExpectations(timeout: 15.0) { error in
+            XCTAssertNil(error)
+        }
     }
     
     func testCreateQuery() throws {
