@@ -2,17 +2,20 @@ import Fluent
 
 final class Atom: Entity {
     var name: String
+    var nickname: String
     var groupId: Identifier
     let storage = Storage()
     
     init(name: String, id: Identifier? = nil) {
         self.name = name
+        self.nickname = name
         self.groupId = 0
         self.id = id
     }
     
     init(row: Row) throws {
         name = try row.get("name")
+        nickname = try row.get("nickname")
         groupId = try row.get("group_id")
     }
     
@@ -20,6 +23,7 @@ final class Atom: Entity {
         var row = Row()
         try row.set(idKey, id)
         try row.set("name", name)
+        try row.set("nickname", nickname)
         try row.set("group_id", groupId)
         return row
     }

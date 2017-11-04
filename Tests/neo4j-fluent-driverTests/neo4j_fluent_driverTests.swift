@@ -11,10 +11,17 @@ class neo4j_fluent_driverTests: XCTestCase {
     
     var driver: neo4j_fluent_driver.Driver!
     var db: Database!
+    var theo: BoltClient!
     
     override func setUp() {
         super.setUp()
         
+        do {
+            theo = try makeClient()
+        } catch(let error) {
+            XCTFail(error.localizedDescription)
+        }
+
         driver = Driver()
         db = Database(driver)
         Compound.database = db
@@ -85,10 +92,18 @@ class neo4j_fluent_driverTests: XCTestCase {
     }
 
     func doTestFilterWith<E: Entity>(query: Query<E>, forMatchingNode matchingNode: Theo.Node) throws {
-        
-        let exp = expectation(description: "Filter returned a node")
-        let theo = try makeClient()
+        try self.doTestFilterWith(query: query, andCreationBlock: {
+            let createResponse = self.theo.createNodeSync(node: matchingNode)
+            XCTAssertNil(createResponse.error)
+            XCTAssertTrue(createResponse.value!)
+        })
+    }
+    
+    func doTestFilterWith<E: Entity>(query: Query<E>, andCreationBlock creationBlock: () -> ()) throws {
 
+        let exp = expectation(description: "Filter returned a node")
+
+        let theo = try makeClient()
         let request = serialize(query)
         
         let group = DispatchGroup()
@@ -106,9 +121,7 @@ class neo4j_fluent_driverTests: XCTestCase {
         }
         group.wait()
 
-        let createResponse = theo.createNodeSync(node: matchingNode)
-        XCTAssertNil(createResponse.error)
-        XCTAssertTrue(createResponse.value!)
+        creationBlock()
 
         theo.executeWithResult(request: request) { result in
             switch result {
@@ -132,13 +145,22 @@ class neo4j_fluent_driverTests: XCTestCase {
         XCTAssertNotNil(atom.id)
     }
     
-    func testUpdateQuery() throws {
+    func testUpdateQueryWithOneParameter() throws {
         let atom = Atom(name: "Miniton")
         try atom.save()
         atom.name = "Miniton the great"
         try atom.save()
     }
-    
+
+    func testUpdateQueryWithThreeParameters() throws {
+        let atom = Atom(name: "Miniton")
+        try atom.save()
+        atom.name = "Miniton the great"
+        atom.nickname = "Mini+"
+        atom.groupId = 13
+        try atom.save()
+    }
+
     func testDeleteQuery() throws {
         let atom = Atom(name: "Miniton")
         try atom.save()
@@ -150,7 +172,8 @@ class neo4j_fluent_driverTests: XCTestCase {
         ("testFilterQueryWithOneParameter", testFilterQueryWithOneParameter),
         ("testFilterQueryWithTwoParameters", testFilterQueryWithTwoParameters),
         ("testCreateQuery", testCreateQuery),
-        ("testUpdateQuery", testUpdateQuery),
+        ("testUpdateQueryWithOneParameter", testUpdateQueryWithOneParameter),
+        ("testUpdateQueryWithThreeParameters", testUpdateQueryWithThreeParameters),
         ("testDeleteQuery", testDeleteQuery),
     ]
 }

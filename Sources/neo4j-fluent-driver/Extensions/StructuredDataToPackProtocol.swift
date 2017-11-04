@@ -36,6 +36,12 @@ extension PackProtocol {
     }
 }
 
+extension Fluent.Node {
+    public func toPackProtocol() -> PackProtocol {
+        return self.wrapped.toPackProtocol()
+    }
+}
+
 extension StructuredData {
 
     public func toPackProtocol() -> PackProtocol {

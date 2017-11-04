@@ -42,7 +42,7 @@ public final class Serializer<E:Entity> {
         let paramTuples = filtersWithParams.flatMap { $0.1 }
         let parameters = Dictionary(uniqueKeysWithValues: paramTuples.map { $0 })
 
-        let nodeAlias = "`\(query.filters.first!.wrapped!.entity.name)`"
+        let nodeAlias = "`\(E.name)`"
         let queryString = "MATCH (\(nodeAlias))\nWHERE \(filters)\nRETURN (\(nodeAlias))"
         print(queryString)
         return Request.run(statement: queryString, parameters: Map(dictionary: parameters))
@@ -133,11 +133,19 @@ public final class Serializer<E:Entity> {
     }
 
     private func queryToNode() -> Theo.Node {
-        var labels = [String]()
-        if let entity = query.entity {
-            let label = type(of: entity).name.capitalizingFirstLetter()
-            labels.append(label)
+        let (id, labels, properties) = queryToIdLabelAndProperties()
+        
+        let node = Theo.Node(labels: labels, properties: properties)
+        if let id = id {
+            node.id = id
         }
+        return node
+    }
+    
+    private func queryToIdLabelAndProperties() -> (UInt64?, [String], [String:PackProtocol]) {
+        var labels = [String]()
+        let label = E.name.capitalizingFirstLetter()
+        labels.append(label)
 
         var id: UInt64? = {
             let uint = query.entity?.id?.wrapped.uint
@@ -165,19 +173,63 @@ public final class Serializer<E:Entity> {
             }
         }
 
-
-        let node = Theo.Node(labels: labels, properties: properties)
-        if let id = id {
-            node.id = id
-        }
-        return node
+        return (id, labels, properties)
     }
 
     private func serializeModify() -> Bolt.Request {
 
+        var statement: [String] = []
+        
+        var theProperties = [String:PackProtocol]()
+        let nodeAlias = "`\(E.name)`"
+        let (idCandidate, labels, properties) = queryToIdLabelAndProperties()
+        guard let id = idCandidate else {
+            print("Can only update an existing node, but node was missing Id. Did you mean to create it instead?")
+            return Bolt.Request.ackFailure()
+        }
+        
+        statement += "MATCH (\(nodeAlias))"
+        statement += "WHERE id(\(nodeAlias)) = \(id)"
+        statement += "SET"
+        
+        if !query.data.isEmpty {
+            var fragments: [String] = []
+            
+            var i = 0
+            query.data.forEach { (key, value) in
+                i = i + 1
 
+                let keyString: String
+                switch key {
+                case .raw(let raw, _):
+                    keyString = raw
+                case .some(let key):
+                    keyString = key
+                }
+                
+                
+                let valueString: String
+                switch value {
+                case .raw(let raw, _):
+                    valueString = raw
+                case .some(let value):
+                    valueString = "{\(keyString)\(i)}"
+                    if keyString != "id" {
+                        theProperties["\(keyString)\(i)"] = value.toPackProtocol()
+                    }
+                }
+                
+                if keyString != "id" {
+                    fragments += "\(nodeAlias).`\(keyString)` = \(valueString)"
+                }
+            }
+            
+            statement += fragments.joined(separator: ",\n")
+        }
 
-        return Request.ackFailure()
+        let queryString = statement.joined(separator: "\n")
+        let request = Bolt.Request.run(statement: queryString, parameters: Map(dictionary: theProperties))
+        return request
     }
 
     private func serializeSchema(schema: Schema) -> Bolt.Request {
