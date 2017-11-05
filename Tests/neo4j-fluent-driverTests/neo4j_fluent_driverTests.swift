@@ -176,10 +176,12 @@ class neo4j_fluent_driverTests: XCTestCase {
         try compound.save()
         
         try atom.compounds.add(compound)
+        print("Do somethign about atom")
     }
 
     func testFetchAll() throws {
-        _ = try Atom.all()
+        let all = try Atom.all()
+        print("Do somethign about all")
     }
     
     func testCount() throws {

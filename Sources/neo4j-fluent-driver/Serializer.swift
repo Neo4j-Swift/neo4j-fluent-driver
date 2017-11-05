@@ -41,12 +41,17 @@ public final class Serializer<E:Entity> {
         let rawFilters = query.filters.filter { if case .raw = $0 { return true } else { return false } }
 
         let filtersWithParams = query.filters.filter { if case .raw = $0 { return false } else { return true } }.map { filterToString(filter: $0) }
-        let filters = filtersWithParams.map { $0.0 }.joined(separator: "\nAND ")
+        var filters = filtersWithParams.map { $0.0 }.joined(separator: "\nAND ")
+        if filters != "" {
+            filters = "\nWHERE \(filters)"
+        }
         let paramTuples = filtersWithParams.flatMap { $0.1 }
         let parameters = Dictionary(uniqueKeysWithValues: paramTuples.map { $0 })
 
+        let label = "`\(E.name.capitalizingFirstLetter())`"
+
         let nodeAlias = "`\(E.name)`"
-        let queryString = "MATCH (\(nodeAlias))\nWHERE \(filters)\nRETURN (\(nodeAlias))"
+        let queryString = "MATCH (\(nodeAlias):\(label))\(filters)\nRETURN (\(nodeAlias))"
         print(queryString)
         return Request.run(statement: queryString, parameters: Map(dictionary: parameters))
 
@@ -133,7 +138,7 @@ public final class Serializer<E:Entity> {
     }
 
     private func serializeCreate() -> Request {
-        
+
         if representsRelationship() {
             return serializeCreateRelationship()
         } else {
@@ -142,7 +147,7 @@ public final class Serializer<E:Entity> {
     }
 
     private func serializeCreateRelationship() -> Request {
-        
+
         let (_, labels, properties) = queryToIdLabelAndProperties()
         assert(labels.count == 1)
         let sides = labels[0].split(separator: "_").map { $0.lowercased() }
@@ -164,9 +169,9 @@ public final class Serializer<E:Entity> {
         return [relationshipFrom, relationshipTo].createRequest(withReturnStatement: true)
 
     }
-    
+
     private func serializeCreateNode() -> Request {
-        
+
         let node = queryToNode()
         let request = node.createRequest()
         return request
@@ -174,14 +179,14 @@ public final class Serializer<E:Entity> {
 
     private func queryToNode() -> Theo.Node {
         let (id, labels, properties) = queryToIdLabelAndProperties()
-        
+
         let node = Theo.Node(labels: labels, properties: properties)
         if let id = id {
             node.id = id
         }
         return node
     }
-    
+
     private func queryToIdLabelAndProperties() -> (UInt64?, [String], [String:PackProtocol]) {
         var labels = [String]()
         let label = E.name.capitalizingFirstLetter()
@@ -219,7 +224,7 @@ public final class Serializer<E:Entity> {
     private func serializeModify() -> Bolt.Request {
 
         var statement: [String] = []
-        
+
         var theProperties = [String:PackProtocol]()
         let nodeAlias = "`\(E.name)`"
         let (idCandidate, labels, properties) = queryToIdLabelAndProperties()
@@ -227,13 +232,13 @@ public final class Serializer<E:Entity> {
             print("Can only update an existing node, but node was missing Id. Did you mean to create it instead?")
             return Bolt.Request.ackFailure()
         }
-        
+
         statement += "MATCH (\(nodeAlias))"
         statement += "WHERE id(\(nodeAlias)) = \(id)"
-        
+
         if !query.data.isEmpty {
             var fragments: [String] = []
-            
+
             var i = 0
             query.data.forEach { (key, value) in
                 i = i + 1
@@ -245,8 +250,8 @@ public final class Serializer<E:Entity> {
                 case .some(let key):
                     keyString = key
                 }
-                
-                
+
+
                 let valueString: String
                 switch value {
                 case .raw(let raw, _):
@@ -257,14 +262,14 @@ public final class Serializer<E:Entity> {
                         theProperties["\(keyString)\(i)"] = value.toPackProtocol()
                     }
                 }
-                
+
                 if keyString != "id" {
                     fragments += "\(nodeAlias).`\(keyString)` = \(valueString)"
                 }
             }
-            
+
             if fragments.count > 0 {
-                
+
                 statement += "SET"
                 statement += fragments.joined(separator: ",\n")
             } else {

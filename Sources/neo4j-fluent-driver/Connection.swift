@@ -85,18 +85,18 @@ public final class Connection: Fluent.Connection {
                                     node = Fluent.Node(booleanLiteral: false)
                                 } else {
                                     // Success!
-                                    if let resultNode = queryResult.nodes.first?.value {
-                                        var properties = Dictionary(uniqueKeysWithValues:
-                                            resultNode.properties.map { key, value in (key, value.toStructuredData()) })
-                                        if let id = resultNode.id {
-                                            theId = resultNode.id
-                                            let idInt = Int(id)
-                                            properties["id"] = StructuredData.number(StructuredData.Number.int(idInt))
-                                        }
-                                        node = Fluent.Node(StructuredData.object(properties), in: nil)
-
-                                    } else {
+                                    if queryResult.nodes.count == 0 {
                                         node = Fluent.Node.null
+                                    } else if queryResult.nodes.count == 1 {
+                                        let resultNode = queryResult.nodes.first!.value
+                                        node = self.theoNodeToFluentNode(resultNode: resultNode)
+                                        if let id = resultNode.id {
+                                            theId = id
+                                        }
+
+                                    } else if queryResult.nodes.count > 1 {
+                                        let resultNodes = queryResult.nodes.values.map { self.theoNodeToFluentNode(resultNode: $0) }
+                                        node = Fluent.Node.array(resultNodes)
                                     }
                                 }
                             }
@@ -116,5 +116,16 @@ public final class Connection: Fluent.Connection {
         }
 
         return node
+    }
+
+    func theoNodeToFluentNode(resultNode: Theo.Node) -> Fluent.Node {
+        var properties = Dictionary(uniqueKeysWithValues:
+            resultNode.properties.map { key, value in (key, value.toStructuredData()) })
+        if let id = resultNode.id {
+            let idInt = Int(id)
+            properties["id"] = StructuredData.number(StructuredData.Number.int(idInt))
+        }
+        let fluentNode = Fluent.Node(StructuredData.object(properties), in: nil)
+        return fluentNode
     }
 }
