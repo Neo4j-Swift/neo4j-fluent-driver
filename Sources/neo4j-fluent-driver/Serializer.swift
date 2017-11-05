@@ -8,6 +8,9 @@ class SerializerHelper {
     static var filterCounter: UInt64 = 0
 }
 
+protocol RepresentsRelationship {}
+extension Pivot: RepresentsRelationship {}
+
 public final class Serializer<E:Entity> {
 
     private let query: Query<E>
@@ -124,9 +127,46 @@ public final class Serializer<E:Entity> {
         return request
     }
 
-
+    private func representsRelationship() -> Bool {
+        guard let entity = query.entity else { return false }
+        return entity is RepresentsRelationship
+    }
 
     private func serializeCreate() -> Request {
+        
+        if representsRelationship() {
+            return serializeCreateRelationship()
+        } else {
+            return serializeCreateNode()
+        }
+    }
+
+    private func serializeCreateRelationship() -> Request {
+        
+        let (_, labels, properties) = queryToIdLabelAndProperties()
+        assert(labels.count == 1)
+        let sides = labels[0].split(separator: "_").map { $0.lowercased() }
+        let leftSide = sides[0]
+        let rightSide = sides[1]
+        guard let leftSideId = properties[leftSide + "Id"]?.uintValue(),
+              let rightSideId = properties[rightSide + "Id"]?.uintValue()
+        else {
+            return Bolt.Request.ackFailure()
+        }
+
+        guard
+            let relationshipFrom = Relationship(fromNodeId: leftSideId, toNodeId: rightSideId, name: "relates", type: .from, properties: [:]),
+            let relationshipTo = Relationship(fromNodeId: leftSideId, toNodeId: rightSideId, name: "relates", type: .to, properties: [:])
+        else {
+            return Bolt.Request.ackFailure()
+        }
+
+        return [relationshipFrom, relationshipTo].createRequest(withReturnStatement: true)
+
+    }
+    
+    private func serializeCreateNode() -> Request {
+        
         let node = queryToNode()
         let request = node.createRequest()
         return request
@@ -190,7 +230,6 @@ public final class Serializer<E:Entity> {
         
         statement += "MATCH (\(nodeAlias))"
         statement += "WHERE id(\(nodeAlias)) = \(id)"
-        statement += "SET"
         
         if !query.data.isEmpty {
             var fragments: [String] = []
@@ -224,11 +263,18 @@ public final class Serializer<E:Entity> {
                 }
             }
             
-            statement += fragments.joined(separator: ",\n")
+            if fragments.count > 0 {
+                
+                statement += "SET"
+                statement += fragments.joined(separator: ",\n")
+            } else {
+                return Bolt.Request.run(statement: "RETURN 1 as n", parameters: Map(dictionary: [:]))
+            }
         }
 
         let queryString = statement.joined(separator: "\n")
         let request = Bolt.Request.run(statement: queryString, parameters: Map(dictionary: theProperties))
+        print(queryString)
         return request
     }
 

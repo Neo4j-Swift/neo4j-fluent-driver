@@ -166,7 +166,29 @@ class neo4j_fluent_driverTests: XCTestCase {
         try atom.save()
         try atom.delete()
     }
+    
+    func testRelationship() throws {
+        Pivot<Atom, Compound>.database = db
+        let atom = Atom(name: "Hydrogen")
+        try atom.save()
 
+        let compound = Compound(name: "Water")
+        try compound.save()
+        
+        try atom.compounds.add(compound)
+    }
+
+    func testFetchAll() throws {
+        _ = try Atom.all()
+    }
+    
+    func testCount() throws {
+        _ = try Atom.count()
+    }
+    
+    func testFindById() throws {
+        _ = try Atom.find(42)
+    }
 
     static var allTests = [
         ("testFilterQueryWithOneParameter", testFilterQueryWithOneParameter),
@@ -175,6 +197,10 @@ class neo4j_fluent_driverTests: XCTestCase {
         ("testUpdateQueryWithOneParameter", testUpdateQueryWithOneParameter),
         ("testUpdateQueryWithThreeParameters", testUpdateQueryWithThreeParameters),
         ("testDeleteQuery", testDeleteQuery),
+        ("testRelationship", testRelationship),
+        ("testFetchAll", testFetchAll),
+        ("testCount", testCount),
+        ("testFindById", testFindById),
     ]
 }
 
